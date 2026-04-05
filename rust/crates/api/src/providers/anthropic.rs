@@ -514,6 +514,18 @@ impl AnthropicClient {
 impl AuthSource {
     pub fn from_env_or_saved() -> Result<Self, ApiError> {
         if let Some(api_key) = read_env_non_empty("ANTHROPIC_API_KEY")? {
+            println!(
+                "ANTHROPIC_API_KEY: {:?}",
+                std::env::var("ANTHROPIC_API_KEY").ok()
+            );
+            println!(
+                "ANTHROPIC_AUTH_TOKEN: {:?}",
+                std::env::var("ANTHROPIC_AUTH_TOKEN").ok()
+            );
+            println!(
+                "ANTHROPIC_BASE_URL: {:?}",
+                std::env::var("ANTHROPIC_BASE_URL").ok()
+            );
             return match read_env_non_empty("ANTHROPIC_AUTH_TOKEN")? {
                 Some(bearer_token) => Ok(Self::ApiKeyAndBearer {
                     api_key,

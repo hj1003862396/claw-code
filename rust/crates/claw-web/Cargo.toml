@@ -1,0 +1,25 @@
+[package]
+name = "claw-web"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "claw-web"
+path = "src/main.rs"
+
+[dependencies]
+axum = "0.8"
+runtime = { path = "../runtime" }
+serde = { version = "1", features = ["derive"] }
+serde_json.workspace = true
+tools = { path = "../tools" }
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync"] }
+uuid = { version = "1", features = ["v4"] }
+tower-http = { version = "0.6", features = ["cors", "fs", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[lints]
+workspace = true

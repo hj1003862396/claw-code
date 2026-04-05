@@ -17,7 +17,6 @@ use runtime::{
     permission_enforcer::{EnforcementResult, PermissionEnforcer},
     read_file,
     summary_compression::compress_summary_text,
-    TaskPacket,
     task_registry::TaskRegistry,
     team_cron_registry::{CronRegistry, TeamRegistry},
     worker_boot::{WorkerReadySnapshot, WorkerRegistry},
@@ -25,7 +24,7 @@ use runtime::{
     BranchFreshness, ContentBlock, ConversationMessage, ConversationRuntime, GrepSearchInput,
     LaneEvent, LaneEventBlocker, LaneEventName, LaneEventStatus, LaneFailureClass,
     McpDegradedReport, MessageRole, PermissionMode, PermissionPolicy, PromptCacheEvent,
-    RuntimeError, Session, ToolError, ToolExecutor,
+    RuntimeError, Session, TaskPacket, ToolError, ToolExecutor,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -1878,27 +1877,25 @@ fn branch_divergence_output(
         dangerously_disable_sandbox: None,
         return_code_interpretation: Some("preflight_blocked:branch_divergence".to_string()),
         no_output_expected: Some(false),
-        structured_content: Some(vec![
-            serde_json::to_value(
-                LaneEvent::new(
-                    LaneEventName::BranchStaleAgainstMain,
-                    LaneEventStatus::Blocked,
-                    iso8601_now(),
-                )
-                    .with_failure_class(LaneFailureClass::BranchDivergence)
-                    .with_detail(stderr.clone())
-                    .with_data(json!({
-                        "branch": branch,
-                        "mainRef": main_ref,
-                        "commitsBehind": commits_behind,
-                        "commitsAhead": commits_ahead,
-                        "missingCommits": missing_fixes,
-                        "blockedCommand": command,
-                        "recommendedAction": format!("merge or rebase {main_ref} before workspace tests")
-                    })),
+        structured_content: Some(vec![serde_json::to_value(
+            LaneEvent::new(
+                LaneEventName::BranchStaleAgainstMain,
+                LaneEventStatus::Blocked,
+                iso8601_now(),
             )
-            .expect("lane event should serialize"),
-        ]),
+            .with_failure_class(LaneFailureClass::BranchDivergence)
+            .with_detail(stderr.clone())
+            .with_data(json!({
+                "branch": branch,
+                "mainRef": main_ref,
+                "commitsBehind": commits_behind,
+                "commitsAhead": commits_ahead,
+                "missingCommits": missing_fixes,
+                "blockedCommand": command,
+                "recommendedAction": format!("merge or rebase {main_ref} before workspace tests")
+            })),
+        )
+        .expect("lane event should serialize")]),
         persisted_output_path: None,
         persisted_output_size: None,
         sandbox_status: None,
@@ -3139,6 +3136,65 @@ fn run_agent_job(job: &AgentJob) -> Result<(), String> {
     persist_agent_terminal_state(&job.manifest, "completed", Some(final_text.as_str()), None)
 }
 
+/// Default max assistant↔tool iterations for [`build_standalone_conversation_runtime`] callers.
+pub const DEFAULT_STANDALONE_AGENT_MAX_ITERATIONS: usize = DEFAULT_AGENT_MAX_ITERATIONS;
+
+/// Tool names enabled for a standalone runtime, mirroring sub-agent profiles (`Explore`, `Plan`, …).
+#[must_use]
+pub fn standalone_allowed_tools(subagent_type: Option<&str>) -> BTreeSet<String> {
+    let normalized = normalize_subagent_type(subagent_type);
+    allowed_tools_for_subagent(&normalized)
+}
+
+/// Builds a [`ConversationRuntime`] with provider auth from the environment (same as background agents).
+#[allow(clippy::needless_pass_by_value)]
+pub fn build_standalone_conversation_runtime(
+    system_prompt: Vec<String>,
+    model: Option<&str>,
+    allowed_tools: BTreeSet<String>,
+) -> Result<ConversationRuntime<ProviderRuntimeClient, SubagentToolExecutor>, String> {
+    let model = resolve_agent_model(model);
+    let api_client = ProviderRuntimeClient::new(model, allowed_tools.clone())?;
+    let permission_policy = agent_permission_policy();
+    let tool_executor = SubagentToolExecutor::new(allowed_tools)
+        .with_enforcer(PermissionEnforcer::new(permission_policy.clone()));
+    Ok(ConversationRuntime::new(
+        Session::new(),
+        api_client,
+        tool_executor,
+        permission_policy,
+        system_prompt,
+    ))
+}
+
+/// Same as [`build_standalone_conversation_runtime`], but continues from an existing [`Session`].
+#[allow(clippy::needless_pass_by_value)]
+pub fn resume_standalone_conversation_runtime(
+    session: Session,
+    system_prompt: Vec<String>,
+    model: Option<&str>,
+    allowed_tools: BTreeSet<String>,
+) -> Result<ConversationRuntime<ProviderRuntimeClient, SubagentToolExecutor>, String> {
+    let model = resolve_agent_model(model);
+    let api_client = ProviderRuntimeClient::new(model, allowed_tools.clone())?;
+    let permission_policy = agent_permission_policy();
+    let tool_executor = SubagentToolExecutor::new(allowed_tools)
+        .with_enforcer(PermissionEnforcer::new(permission_policy.clone()));
+    Ok(ConversationRuntime::new(
+        session,
+        api_client,
+        tool_executor,
+        permission_policy,
+        system_prompt,
+    ))
+}
+
+/// Concatenates text blocks from the last assistant message in a turn summary.
+#[must_use]
+pub fn summarize_turn_assistant_text(summary: &runtime::TurnSummary) -> String {
+    final_assistant_text(summary)
+}
+
 fn build_agent_runtime(
     job: &AgentJob,
 ) -> Result<ConversationRuntime<ProviderRuntimeClient, SubagentToolExecutor>, String> {
@@ -3297,12 +3353,12 @@ fn persist_agent_terminal_state(
     next_manifest.current_blocker = blocker.clone();
     next_manifest.error = error;
     if let Some(blocker) = blocker {
-        next_manifest.lane_events.push(
-            LaneEvent::blocked(iso8601_now(), &blocker),
-        );
-        next_manifest.lane_events.push(
-            LaneEvent::failed(iso8601_now(), &blocker),
-        );
+        next_manifest
+            .lane_events
+            .push(LaneEvent::blocked(iso8601_now(), &blocker));
+        next_manifest
+            .lane_events
+            .push(LaneEvent::failed(iso8601_now(), &blocker));
     } else {
         next_manifest.current_blocker = None;
         let compressed_detail = result
@@ -3395,8 +3451,7 @@ fn classify_lane_failure(error: &str) -> LaneFailureClass {
     }
 }
 
-struct ProviderRuntimeClient {
-    runtime: tokio::runtime::Runtime,
+pub struct ProviderRuntimeClient {
     client: ProviderClient,
     model: String,
     allowed_tools: BTreeSet<String>,
@@ -3408,11 +3463,32 @@ impl ProviderRuntimeClient {
         let model = resolve_model_alias(&model).clone();
         let client = ProviderClient::from_model(&model).map_err(|error| error.to_string())?;
         Ok(Self {
-            runtime: tokio::runtime::Runtime::new().map_err(|error| error.to_string())?,
             client,
             model,
             allowed_tools,
         })
+    }
+
+    /// Runs a future that must call async provider APIs.
+    ///
+    /// - On a Tokio worker (e.g. Axum): `block_in_place` + the current handle's `block_on`.
+    /// - On a plain OS thread (e.g. sub-agent `std::thread`): a short-lived **current-thread**
+    ///   runtime is created, used for `block_on`, then dropped on that same thread — avoiding both
+    ///   nested multi-thread runtimes and dropping a multi-thread runtime from an async context
+    ///   when this client is torn down after `into_session()`.
+    fn block_on_provider<F>(&self, future: F) -> F::Output
+    where
+        F: std::future::Future,
+    {
+        if tokio::runtime::Handle::try_current().is_ok() {
+            tokio::task::block_in_place(|| tokio::runtime::Handle::current().block_on(future))
+        } else {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("tokio current_thread runtime for ProviderRuntimeClient");
+            rt.block_on(future)
+        }
     }
 }
 
@@ -3437,9 +3513,9 @@ impl ApiClient for ProviderRuntimeClient {
             stream: true,
         };
 
-        self.runtime.block_on(async {
-            let mut stream = self
-                .client
+        let client = self.client.clone();
+        self.block_on_provider(async move {
+            let mut stream = client
                 .stream_message(&message_request)
                 .await
                 .map_err(|error| RuntimeError::new(error.to_string()))?;
@@ -3496,7 +3572,7 @@ impl ApiClient for ProviderRuntimeClient {
                 }
             }
 
-            push_prompt_cache_record(&self.client, &mut events);
+            push_prompt_cache_record(&client, &mut events);
 
             if !saw_stop
                 && events.iter().any(|event| {
@@ -3514,8 +3590,7 @@ impl ApiClient for ProviderRuntimeClient {
                 return Ok(events);
             }
 
-            let response = self
-                .client
+            let response = client
                 .send_message(&MessageRequest {
                     stream: false,
                     ..message_request.clone()
@@ -3523,13 +3598,13 @@ impl ApiClient for ProviderRuntimeClient {
                 .await
                 .map_err(|error| RuntimeError::new(error.to_string()))?;
             let mut events = response_to_events(response);
-            push_prompt_cache_record(&self.client, &mut events);
+            push_prompt_cache_record(&client, &mut events);
             Ok(events)
         })
     }
 }
 
-struct SubagentToolExecutor {
+pub struct SubagentToolExecutor {
     allowed_tools: BTreeSet<String>,
     enforcer: Option<PermissionEnforcer>,
 }
@@ -4952,8 +5027,8 @@ mod tests {
         agent_permission_policy, allowed_tools_for_subagent, classify_lane_failure,
         execute_agent_with_spawn, execute_tool, final_assistant_text, mvp_tool_specs,
         permission_mode_from_plugin, persist_agent_terminal_state, push_output_block,
-        run_task_packet, AgentInput, AgentJob, GlobalToolRegistry, LaneEventName,
-        LaneFailureClass, SubagentToolExecutor,
+        run_task_packet, AgentInput, AgentJob, GlobalToolRegistry, LaneEventName, LaneFailureClass,
+        SubagentToolExecutor,
     };
     use api::OutputContentBlock;
     use runtime::{
@@ -5977,7 +6052,10 @@ mod tests {
                 "gateway routing rejected the request",
                 LaneFailureClass::GatewayRouting,
             ),
-            ("tool failed: denied tool execution from hook", LaneFailureClass::ToolRuntime),
+            (
+                "tool failed: denied tool execution from hook",
+                LaneFailureClass::ToolRuntime,
+            ),
             ("thread creation failed", LaneFailureClass::Infra),
         ];
 
@@ -6000,11 +6078,17 @@ mod tests {
             (LaneEventName::MergeReady, "lane.merge.ready"),
             (LaneEventName::Finished, "lane.finished"),
             (LaneEventName::Failed, "lane.failed"),
-            (LaneEventName::BranchStaleAgainstMain, "branch.stale_against_main"),
+            (
+                LaneEventName::BranchStaleAgainstMain,
+                "branch.stale_against_main",
+            ),
         ];
 
         for (event, expected) in cases {
-            assert_eq!(serde_json::to_value(event).expect("serialize lane event"), json!(expected));
+            assert_eq!(
+                serde_json::to_value(event).expect("serialize lane event"),
+                json!(expected)
+            );
         }
     }
 

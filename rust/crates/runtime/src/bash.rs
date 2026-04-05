@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tokio::process::Command as TokioCommand;
-use tokio::runtime::Builder;
+use tokio::runtime::{Builder, Handle};
 use tokio::time::timeout;
 
 use crate::sandbox::{
@@ -98,8 +98,16 @@ pub fn execute_bash(input: BashCommandInput) -> io::Result<BashCommandOutput> {
         });
     }
 
-    let runtime = Builder::new_current_thread().enable_all().build()?;
-    runtime.block_on(execute_bash_async(input, sandbox_status, cwd))
+    // When called from an async Tokio context (e.g. Axum after `block_in_place` in the API
+    // client), creating a nested `Runtime` panics. Reuse the current handle instead.
+    if Handle::try_current().is_ok() {
+        tokio::task::block_in_place(|| {
+            Handle::current().block_on(execute_bash_async(input, sandbox_status, cwd))
+        })
+    } else {
+        let runtime = Builder::new_current_thread().enable_all().build()?;
+        runtime.block_on(execute_bash_async(input, sandbox_status, cwd))
+    }
 }
 
 async fn execute_bash_async(

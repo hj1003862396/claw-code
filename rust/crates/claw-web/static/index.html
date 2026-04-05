@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Claw Web</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; line-height: 1.5; }
+    body { max-width: 52rem; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+    h1 { font-size: 1.35rem; }
+    label { display: block; margin-top: 0.75rem; font-weight: 600; }
+    input[type="text"] { width: 100%; box-sizing: border-box; padding: 0.4rem 0.5rem; margin-top: 0.25rem; }
+    button { margin-top: 1rem; padding: 0.45rem 0.9rem; cursor: pointer; }
+    pre, #out { background: #f4f4f5; padding: 0.75rem; border-radius: 6px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 0.85rem; }
+    .row { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; margin-top: 0.5rem; }
+    .muted { color: #666; font-size: 0.9rem; }
+    .err { color: #b91c1c; }
+  </style>
+</head>
+<body>
+  <h1>Claw Web（本地演示）</h1>
+  <p class="muted">调用后端 <code>/api/*</code>。系统提示词依赖当前工作区下的 <code>CLAUDE.md</code>、配置等，与 CLI 使用同一套 <code>load_system_prompt</code>。</p>
+  <p class="muted">对话走 <code>tools</code> 里的 <code>ProviderRuntimeClient</code>，需已配置与 CLI/Agent 相同的鉴权（例如 API Key 或 OAuth 相关环境变量）。默认仅监听本机。</p>
+
+  <section>
+    <h2>对话（多轮）</h2>
+    <label for="chat-cwd">工作目录（留空 = 服务端当前目录，用于加载配置与指令文件）</label>
+    <input type="text" id="chat-cwd" placeholder="/path/to/project" autocomplete="off" />
+    <label for="chat-date">日期（可选）</label>
+    <input type="text" id="chat-date" placeholder="2026-04-05" autocomplete="off" />
+    <label for="chat-model">模型（可选，默认 claude-opus-4-6；也可用环境变量 CLAW_WEB_MODEL）</label>
+    <input type="text" id="chat-model" placeholder="claude-opus-4-6" autocomplete="off" />
+    <label for="chat-subagent">工具配置档 subagent_type（默认 General = bash/写文件；Explore = 只读）</label>
+    <input type="text" id="chat-subagent" value="General" autocomplete="off" />
+    <div class="row">
+      <button type="button" id="btn-new-session">新建会话 POST /api/chat/session</button>
+      <button type="button" id="btn-close-session">结束会话 POST /api/chat/session/close</button>
+    </div>
+    <p class="muted">当前 session_id：<span id="session-label">（未创建）</span></p>
+    <label for="chat-msg">用户消息</label>
+    <input type="text" id="chat-msg" placeholder="用一句话描述你想做的事…" autocomplete="off" />
+    <div class="row">
+      <button type="button" id="btn-send">发送 POST /api/chat/message</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>健康检查</h2>
+    <div class="row">
+      <button type="button" id="btn-health">GET /api/health</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>系统提示词预览</h2>
+    <label for="cwd">工作目录 cwd（留空则用服务端进程当前目录）</label>
+    <input type="text" id="cwd" placeholder="/path/to/repo" autocomplete="off" />
+    <label for="date">日期字符串（可选）</label>
+    <input type="text" id="date" placeholder="例如 2026-04-05" autocomplete="off" />
+    <div class="row">
+      <button type="button" id="btn-prompt">GET /api/system-prompt</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Echo</h2>
+    <label for="msg">message</label>
+    <input type="text" id="msg" value="hello" autocomplete="off" />
+    <div class="row">
+      <button type="button" id="btn-echo">POST /api/echo</button>
+    </div>
+  </section>
+
+  <h2>响应</h2>
+  <pre id="out">（尚未请求）</pre>
+
+  <script>
+    let chatSessionId = null;
+    const out = document.getElementById("out");
+    const sessionLabel = document.getElementById("session-label");
+    function show(obj) {
+      out.textContent = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
+      out.classList.remove("err");
+    }
+    function showErr(e) {
+      out.textContent = e;
+      out.classList.add("err");
+    }
+
+    document.getElementById("btn-health").onclick = async () => {
+      try {
+        const r = await fetch("/api/health");
+        show(await r.json());
+      } catch (e) { showErr(String(e)); }
+    };
+
+    document.getElementById("btn-prompt").onclick = async () => {
+      const cwd = document.getElementById("cwd").value.trim();
+      const date = document.getElementById("date").value.trim();
+      const q = new URLSearchParams();
+      if (cwd) q.set("cwd", cwd);
+      if (date) q.set("date", date);
+      const url = "/api/system-prompt" + (q.toString() ? "?" + q.toString() : "");
+      try {
+        const r = await fetch(url);
+        const data = await r.json();
+        if (!r.ok) showErr(data.error || JSON.stringify(data));
+        else show(data);
+      } catch (e) { showErr(String(e)); }
+    };
+
+    document.getElementById("btn-echo").onclick = async () => {
+      const message = document.getElementById("msg").value;
+      try {
+        const r = await fetch("/api/echo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message }),
+        });
+        show(await r.json());
+      } catch (e) { showErr(String(e)); }
+    };
+
+    document.getElementById("btn-new-session").onclick = async () => {
+      const cwd = document.getElementById("chat-cwd").value.trim();
+      const date = document.getElementById("chat-date").value.trim();
+      const model = document.getElementById("chat-model").value.trim();
+      const subagent_type = document.getElementById("chat-subagent").value.trim();
+      const body = {};
+      if (cwd) body.cwd = cwd;
+      if (date) body.date = date;
+      if (model) body.model = model;
+      if (subagent_type) body.subagent_type = subagent_type;
+      try {
+        const r = await fetch("/api/chat/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await r.json();
+        if (!r.ok) { showErr(data.error || JSON.stringify(data)); return; }
+        chatSessionId = data.session_id;
+        sessionLabel.textContent = chatSessionId;
+        show(data);
+      } catch (e) { showErr(String(e)); }
+    };
+
+    document.getElementById("btn-send").onclick = async () => {
+      if (!chatSessionId) { showErr("请先新建会话"); return; }
+      const message = document.getElementById("chat-msg").value;
+      try {
+        const r = await fetch("/api/chat/message", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: chatSessionId, message }),
+        });
+        const data = await r.json();
+        if (!r.ok) { showErr(data.error || JSON.stringify(data)); return; }
+        show(data);
+      } catch (e) { showErr(String(e)); }
+    };
+
+    document.getElementById("btn-close-session").onclick = async () => {
+      if (!chatSessionId) { showErr("没有活跃会话"); return; }
+      try {
+        const r = await fetch("/api/chat/session/close", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: chatSessionId }),
+        });
+        const data = await r.json();
+        if (!r.ok) { showErr(data.error || JSON.stringify(data)); return; }
+        chatSessionId = null;
+        sessionLabel.textContent = "（已结束）";
+        show(data);
+      } catch (e) { showErr(String(e)); }
+    };
+  </script>
+</body>
+</html>
