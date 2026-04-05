@@ -5,42 +5,11 @@
   </component>
   <component name="CargoProjects">
     <cargoProject FILE="$PROJECT_DIR$/rust/crates/rusty-claude-cli/Cargo.toml" />
+    <cargoProject FILE="$PROJECT_DIR$/rust/crates/claw-web/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="7efbd857-7647-4e74-b816-bc7c89e16b60" name="更改" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/.gitignore" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/claw-code.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/copilot.data.migration.ask2agent.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.port_sessions/27fa49b6975f4c05a1946c8295444774.json" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.port_sessions/2e366e2261024389941c50bb97039439.json" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.port_sessions/879370f50e864c85acdb73dd33645c3e.json" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.port_sessions/bd8a436a7edf459da88efcf251d77141.json" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/rust/.claw/sessions/session-1775365456275-0.jsonl" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/rust/.claw/sessions/session-1775365622735-0.jsonl" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/rust/.claw/sessions/session-1775365767768-0.jsonl" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/rust/.claw/sessions/session-1775365902796-0.jsonl" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/rust/.claw/sessions/session-1775365914218-0.jsonl" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/rust/.claw/sessions/session-1775366047045-0.jsonl" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/rust/crates/claw-web/Cargo.toml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/rust/crates/claw-web/src/main.rs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/rust/crates/claw-web/static/index.html" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/rust/启动.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/rust/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/rust/Cargo.lock" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/rust/crates/api/src/providers/anthropic.rs" beforeDir="false" afterPath="$PROJECT_DIR$/rust/crates/api/src/providers/anthropic.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/rust/crates/runtime/src/bash.rs" beforeDir="false" afterPath="$PROJECT_DIR$/rust/crates/runtime/src/bash.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/rust/crates/runtime/src/lane_events.rs" beforeDir="false" afterPath="$PROJECT_DIR$/rust/crates/runtime/src/lane_events.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/rust/crates/runtime/src/mcp_lifecycle_hardened.rs" beforeDir="false" afterPath="$PROJECT_DIR$/rust/crates/runtime/src/mcp_lifecycle_hardened.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/rust/crates/runtime/src/mcp_stdio.rs" beforeDir="false" afterPath="$PROJECT_DIR$/rust/crates/runtime/src/mcp_stdio.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/rust/crates/runtime/src/session_control.rs" beforeDir="false" afterPath="$PROJECT_DIR$/rust/crates/runtime/src/session_control.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/rust/crates/runtime/src/task_packet.rs" beforeDir="false" afterPath="$PROJECT_DIR$/rust/crates/runtime/src/task_packet.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/rust/crates/runtime/src/task_registry.rs" beforeDir="false" afterPath="$PROJECT_DIR$/rust/crates/runtime/src/task_registry.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/rust/crates/runtime/src/worker_boot.rs" beforeDir="false" afterPath="$PROJECT_DIR$/rust/crates/runtime/src/worker_boot.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/rust/crates/rusty-claude-cli/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/rust/crates/rusty-claude-cli/src/main.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/rust/crates/tools/src/lane_completion.rs" beforeDir="false" afterPath="$PROJECT_DIR$/rust/crates/tools/src/lane_completion.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/rust/crates/tools/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/rust/crates/tools/src/lib.rs" afterDir="false" />
+    <list default="true" id="7efbd857-7647-4e74-b816-bc7c89e16b60" name="更改" comment="增加web端">
+      <change beforePath="$PROJECT_DIR$/rust/crates/claw-web/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/rust/crates/claw-web/src/main.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -65,12 +34,12 @@
     &quot;assignee&quot;: &quot;hj1003862396&quot;
   }
 }</component>
-  <component name="GithubPullRequestsUISettings">{
-  &quot;selectedUrlAndAccountId&quot;: {
-    &quot;url&quot;: &quot;https://github.com/ultraworkers/claw-code&quot;,
-    &quot;accountId&quot;: &quot;1f4115c8-dc06-4a2c-9b49-42962d954c7c&quot;
+  <component name="GithubPullRequestsUISettings"><![CDATA[{
+  "selectedUrlAndAccountId": {
+    "url": "https://github.com/hj1003862396/claw-code.git",
+    "accountId": "7b9c8eed-8aa9-44aa-a1e3-ec0410f8a859"
   }
-}</component>
+}]]></component>
   <component name="MacroExpansionManager">
     <option name="directoryName" value="4xr5NHYy" />
   </component>
@@ -123,10 +92,23 @@
       <updated>1775363376054</updated>
       <workItem from="1775363376668" duration="1651000" />
     </task>
+    <task id="LOCAL-00001" summary="增加web端">
+      <option name="closed" value="true" />
+      <created>1775369745389</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1775369745389</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="增加web端" />
+    <option name="LAST_COMMIT_MESSAGE" value="增加web端" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>

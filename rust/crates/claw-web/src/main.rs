@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
 
 use tokio::sync::Mutex;
 
@@ -26,6 +27,8 @@ use tools::{
 };
 use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
+use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
+use tracing::Level;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Clone)]
@@ -217,6 +220,7 @@ async fn chat_create_session(
     State(state): State<AppState>,
     Json(body): Json<CreateSessionBody>,
 ) -> Result<Json<CreateSessionResponse>, (StatusCode, Json<ErrorBody>)> {
+    let t0 = Instant::now();
     let cwd = resolve_cwd(body.cwd).map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, e))?;
     let date = body.date.clone().unwrap_or_else(|| "unknown".to_string());
     let subagent_type = body
@@ -249,8 +253,18 @@ async fn chat_create_session(
         model: model_for_response.clone(),
         allowed_tools: allowed,
     };
+    let tool_count = chat.allowed_tools.len();
 
     state.sessions.lock().await.insert(session_id.clone(), chat);
+
+    tracing::info!(
+        target: "claw_web",
+        session_id = %session_id,
+        subagent_type = %subagent_type,
+        tool_count,
+        elapsed_ms = t0.elapsed().as_millis() as u64,
+        "chat session created"
+    );
 
     Ok(Json(CreateSessionResponse {
         session_id,
@@ -269,6 +283,14 @@ async fn chat_send(
     if body.session_id.trim().is_empty() {
         return Err(err(StatusCode::BAD_REQUEST, "session_id must not be empty"));
     }
+
+    let t0 = Instant::now();
+    tracing::info!(
+        target: "claw_web",
+        session_id = %body.session_id,
+        message_chars = body.message.chars().count(),
+        "chat message: run_turn start"
+    );
 
     let mut map = state.sessions.lock().await;
     let entry = map.get_mut(&body.session_id).ok_or_else(|| {
@@ -291,6 +313,16 @@ async fn chat_send(
         .run_turn(body.message.clone(), None)
         .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     entry.session = runtime.into_session();
+
+    tracing::info!(
+        target: "claw_web",
+        session_id = %body.session_id,
+        elapsed_ms = t0.elapsed().as_millis() as u64,
+        iterations = summary.iterations,
+        tool_results = summary.tool_results.len(),
+        "chat message: run_turn done"
+    );
+
     let u = summary.usage;
     Ok(Json(ChatMessageResponse {
         reply: summarize_turn_assistant_text(&summary),
@@ -344,13 +376,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/chat/session/close", post(chat_close_session))
         .with_state(state)
         .fallback_service(ServeDir::new(static_root))
-        .layer(CorsLayer::permissive());
+        .layer(CorsLayer::permissive())
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
+                .on_response(DefaultOnResponse::new().level(Level::INFO)),
+        );
 
     let addr: SocketAddr = std::env::var("CLAW_WEB_ADDR")
         .unwrap_or_else(|_| "127.0.0.1:3000".to_string())
         .parse()?;
 
     tracing::info!("claw-web listening on http://{addr}/");
+    tracing::info!(
+        "logs go to stderr (this terminal). default filter is RUST_LOG=info; try RUST_LOG=debug,tower_http=info,tokio=warn,hyper=warn,reqwest=warn for more"
+    );
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
     Ok(())
